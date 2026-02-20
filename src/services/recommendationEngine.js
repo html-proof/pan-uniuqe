@@ -46,6 +46,8 @@ async function generateRecommendationsForUser(userId) {
                 const artistName = artistData.name || artistId;
                 recommendations.becauseYouListenedTo[artistName] = artistData.results.slice(0, 10).map(s => s.id);
             }
+            // Internal throttle between artists
+            await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (e) {
             console.error(`Error fetching for artist ${artistId}:`, e.message);
         }
@@ -68,6 +70,8 @@ async function generateRecommendationsForUser(userId) {
 
     if (targetSongId) {
         try {
+            // Internal throttle before recommendations
+            await new Promise(resolve => setTimeout(resolve, 1000));
             const similar = await getRecommendationsForSong(targetSongId);
             if (similar && similar.data) {
                 // Simple sorting mechanism: boost songs that match the same explicit language or artist
@@ -92,6 +96,8 @@ async function generateRecommendationsForUser(userId) {
     // 4. Final Fallback: If Home Feed is still empty (brand new user), fetch trending songs
     if (recommendations.homeFeed.length === 0) {
         try {
+            // Internal throttle before fallback
+            await new Promise(resolve => setTimeout(resolve, 1000));
             const preferredLangs = Object.keys(languages);
             const queryLang = preferredLangs.length > 0 ? preferredLangs[0] : 'Hindi';
             console.log(`Cold start: Fetching global top ${queryLang} songs for homeFeed`);
