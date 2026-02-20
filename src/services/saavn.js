@@ -11,21 +11,43 @@ const saavnClient = axios.create({
 // Helper for delaying retries
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Simple retry wrapper for axios
-async function saavnRequest(url, retries = 3) {
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await saavnClient.get(url);
-        } catch (error) {
-            if (error.response && error.response.status === 429 && i < retries - 1) {
-                const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
-                console.warn(`Saavn API: 429 encountered, retrying in ${Math.round(delay)}ms...`);
-                await sleep(delay);
-                continue;
+// Global semaphore to ensure only ONE request hits Saavn at a time
+let requestQueue = Promise.resolve();
+
+// Simple retry wrapper for axios with global serialization
+async function saavnRequest(url, retries = 5) {
+    const executeRequest = async () => {
+        for (let i = 0; i < retries; i++) {
+            try {
+                return await saavnClient.get(url);
+            } catch (error) {
+                const is429 = error.response && error.response.status === 429;
+                if (is429 && i < retries - 1) {
+                    // Exponential backoff: 1s, 2s, 4s, 8s... + jitter
+                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                    console.warn(`Saavn API [429]: Retrying ${url} in ${Math.round(delay)}ms (Attempt ${i + 1}/${retries})`);
+                    await sleep(delay);
+                    continue;
+                }
+                throw error;
             }
-            throw error;
         }
-    }
+    };
+
+    // Serialize all requests through the global queue
+    // We use .catch(() => {}) to ensure the chain continues even if a request ultimately fails
+    const result = new Promise((resolve, reject) => {
+        requestQueue = requestQueue.catch(() => { }).then(async () => {
+            try {
+                const response = await executeRequest();
+                resolve(response);
+            } catch (err) {
+                reject(err);
+            }
+        });
+    });
+
+    return result;
 }
 
 async function getSearch(query, page = 1, limit = 10) {

@@ -17,14 +17,14 @@ async function routes(fastify, options) {
             return reply.code(400).send({ error: 'IDs array is required' });
         }
 
-        const songDetails = await Promise.all(
-            ids.map(id =>
-                getOrSetCache(`song:${id}`, 3600, async () => {
-                    const data = await getSongDetails(id);
-                    return mapSong(data?.data?.[0] || data);
-                })
-            )
-        );
+        const songDetails = [];
+        for (const id of ids) {
+            const song = await getOrSetCache(`song:${id}`, 3600, async () => {
+                const data = await getSongDetails(id);
+                return mapSong(data?.data?.[0] || data);
+            });
+            if (song) songDetails.push(song);
+        }
 
         return songDetails.filter(s => s !== null);
     });
