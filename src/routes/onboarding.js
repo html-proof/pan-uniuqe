@@ -69,38 +69,43 @@ async function routes(fastify, options) {
 
                 // Search for top songs in each requested language to extract popular artists natively
                 for (const lang of languages) {
-                    const data = await getSearchSongs(`top ${lang} songs`);
+                    const response = await getSearchSongs(`top ${lang} songs`);
 
-                    if (data && data.data && data.data.results) {
-                        data.data.results.forEach(song => {
-                            // Some saavn endpoints return string vs array. Standardize string to array mappings
-                            if (song.primaryArtistsId && song.primaryArtists) {
-                                const ids = song.primaryArtistsId.split(',').map(id => id.trim());
-                                const names = song.primaryArtists.split(',').map(name => name.trim());
+                    // The Saavn API can return results either directly, inside `data`, or inside `data.results`
+                    const results = Array.isArray(response) ? response
+                        : Array.isArray(response?.results) ? response.results
+                            : Array.isArray(response?.data?.results) ? response.data.results
+                                : Array.isArray(response?.data) ? response.data
+                                    : [];
 
-                                for (let i = 0; i < ids.length; i++) {
-                                    if (ids[i] && names[i] && !allArtists.has(ids[i])) {
-                                        allArtists.set(ids[i], {
-                                            id: ids[i],
-                                            name: names[i],
-                                            // Fallback to song image if artist image is missing
-                                            image: song.image ? song.image[song.image.length - 1].url : null
-                                        });
-                                    }
+                    results.forEach(song => {
+                        // Some saavn endpoints return string vs array. Standardize string to array mappings
+                        if (song.primaryArtistsId && song.primaryArtists) {
+                            const ids = song.primaryArtistsId.split(',').map(id => id.trim());
+                            const names = song.primaryArtists.split(',').map(name => name.trim());
+
+                            for (let i = 0; i < ids.length; i++) {
+                                if (ids[i] && names[i] && !allArtists.has(ids[i])) {
+                                    allArtists.set(ids[i], {
+                                        id: ids[i],
+                                        name: names[i],
+                                        // Fallback to song image if artist image is missing
+                                        image: song.image ? song.image[song.image.length - 1].url : null
+                                    });
                                 }
-                            } else if (song.artists && song.artists.primary) {
-                                song.artists.primary.forEach(artist => {
-                                    if (artist.id && artist.name && !allArtists.has(artist.id)) {
-                                        allArtists.set(artist.id, {
-                                            id: artist.id,
-                                            name: artist.name,
-                                            image: artist.image && artist.image.length > 0 ? artist.image[artist.image.length - 1].url : null
-                                        });
-                                    }
-                                });
                             }
-                        });
-                    }
+                        } else if (song.artists && song.artists.primary) {
+                            song.artists.primary.forEach(artist => {
+                                if (artist.id && artist.name && !allArtists.has(artist.id)) {
+                                    allArtists.set(artist.id, {
+                                        id: artist.id,
+                                        name: artist.name,
+                                        image: artist.image && artist.image.length > 0 ? artist.image[artist.image.length - 1].url : null
+                                    });
+                                }
+                            });
+                        }
+                    });
                 }
 
                 // Return top 20 artists found matching those languages
