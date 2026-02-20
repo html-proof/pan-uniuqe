@@ -179,10 +179,19 @@ const mapSong = (song) => {
     };
 };
 
+async function getSongsBulk(ids) {
+    if (!ids || ids.length === 0) return [];
+    const idStr = ids.join(',');
+    const response = await saavnRequest(`/api/songs?ids=${idStr}`);
+    const dataArray = response.data?.data || response.data || [];
+    return Array.isArray(dataArray) ? dataArray : [dataArray];
+}
+
 module.exports = {
     getSearch,
     getSearchSongs,
     getSongDetails,
+    getSongsBulk,
     getArtistDetails,
     getRecommendationsForSong,
     getAlbumDetails,

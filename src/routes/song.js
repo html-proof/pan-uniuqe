@@ -14,21 +14,45 @@ async function routes(fastify, options) {
             return reply.code(400).send({ error: 'IDs array is required' });
         }
 
+        const { cache } = require('../services/cache');
+        const { getSongsBulk } = require('../services/saavn');
+
         const songDetails = [];
+        const missingIds = [];
+
+        // 1. Check Cache
         for (const id of ids) {
-            try {
-                const data = await getSongDetails(id);
-                if (data) {
-                    const song = mapSong(data?.data?.[0] || data);
-                    if (song) songDetails.push(song);
-                }
-            } catch (error) {
-                console.warn(`[SongList] Soft-failing fetch for song ${id}: ${error.message}`);
-                // Continue to the next song instead of crashing the whole batch
+            const cached = cache.get(`song:${id}`);
+            if (cached) {
+                // The cache holds the raw API response (the `{data: [...]}` object)
+                const song = mapSong(cached?.data?.[0] || cached);
+                if (song) songDetails.push(song);
+            } else {
+                missingIds.push(id);
             }
         }
 
-        return songDetails.filter(s => s !== null);
+        // 2. Fetch missing in bulk
+        if (missingIds.length > 0) {
+            try {
+                // Ensure we don't exceed URL length limits by fetching max 50 at a time if needed, 
+                // but for our app, lists are usually 10-20 long.
+                const bulkData = await getSongsBulk(missingIds);
+
+                for (const rawData of bulkData) {
+                    // Cache the individual raw response so future single fetches hit cache
+                    if (rawData && rawData.id) {
+                        cache.set(`song:${rawData.id}`, rawData, 3600);
+                        const song = mapSong(rawData);
+                        if (song) songDetails.push(song);
+                    }
+                }
+            } catch (error) {
+                console.warn(`[SongList] Bulk fetch partially failed: ${error.message}`);
+            }
+        }
+
+        return songDetails;
     });
 }
 
