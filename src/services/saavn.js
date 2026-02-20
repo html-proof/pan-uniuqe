@@ -1,7 +1,7 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const SAAVN_BASE_URL = process.env.SAAVN_API_URL || 'https://saavn.sumit.co';
+const SAAVN_BASE_URL = process.env.SAAVN_API_URL || 'https://jiosaavn-api.vercel.app';
 
 const saavnClient = axios.create({
     baseURL: SAAVN_BASE_URL,
@@ -19,7 +19,7 @@ async function getSearchSongs(query, page = 1, limit = 10) {
 }
 
 async function getSongDetails(id) {
-    const { data } = await saavnClient.get(`/api/songs/${id}`);
+    const { data } = await saavnClient.get(`/api/song?id=${id}`);
     return data;
 }
 
@@ -36,7 +36,7 @@ async function getRecommendationsForSong(id) {
 }
 
 async function getAlbumDetails(id) {
-    const { data } = await saavnClient.get(`/api/albums?id=${id}`);
+    const { data } = await saavnClient.get(`/api/album?id=${id}`);
     return data;
 }
 
