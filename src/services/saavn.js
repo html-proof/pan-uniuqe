@@ -38,8 +38,8 @@ async function saavnRequest(url, retries = 2) {
 
                 // If cloudflare blocked the UNOFFICIAL wrapper API globally
                 if (is429) {
-                    saavnBlockedUntil = Date.now() + 60000; // block for 60s
-                    console.error(`[Circuit Breaker] Cloudflare 429 Limit Hit! Blocking all Saavn API calls for 60s.`);
+                    saavnBlockedUntil = Date.now() + 180000; // block for 3 mins
+                    console.error(`[Circuit Breaker] Cloudflare 429 Limit Hit! Blocking all Saavn API calls for 3m.`);
                     throw new Error("Saavn temporarily disabled (429 Rate Limit)");
                 }
 
