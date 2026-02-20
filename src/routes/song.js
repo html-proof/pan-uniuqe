@@ -4,11 +4,8 @@ const { getOrSetCache } = require('../services/cache');
 async function routes(fastify, options) {
     fastify.get('/:id', async (request, reply) => {
         const { id } = request.params;
-
-        return await getOrSetCache(`song:${id}`, 3600, async () => {
-            const data = await getSongDetails(id);
-            return mapSong(data?.data?.[0] || data);
-        });
+        const data = await getSongDetails(id);
+        return mapSong(data?.data?.[0] || data);
     });
 
     fastify.post('/list', async (request, reply) => {
@@ -19,10 +16,8 @@ async function routes(fastify, options) {
 
         const songDetails = [];
         for (const id of ids) {
-            const song = await getOrSetCache(`song:${id}`, 3600, async () => {
-                const data = await getSongDetails(id);
-                return mapSong(data?.data?.[0] || data);
-            });
+            const data = await getSongDetails(id);
+            const song = mapSong(data?.data?.[0] || data);
             if (song) songDetails.push(song);
         }
 

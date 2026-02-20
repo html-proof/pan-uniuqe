@@ -1,7 +1,7 @@
 const { db } = require('../config/firebase');
 const { generateRecommendationsForUser } = require('../services/recommendationEngine');
 
-const UPDATE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const UPDATE_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 async function runWorker() {
     console.log('Worker: Starting recommendation update cycle...');

@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { getOrSetCache } = require('./cache');
 require('dotenv').config();
 
 const SAAVN_BASE_URL = process.env.SAAVN_API_URL || 'https://saavn.sumit.co';
@@ -61,25 +62,32 @@ async function getSearchSongs(query, page = 1, limit = 10) {
 }
 
 async function getSongDetails(id) {
-    const { data } = await saavnRequest(`/api/songs/${id}`);
-    return data;
+    return await getOrSetCache(`song:${id}`, 3600, async () => {
+        const { data } = await saavnRequest(`/api/songs/${id}`);
+        return data;
+    });
 }
 
 async function getArtistDetails(id) {
-    // Some versions of the API use /api/artists?id=, others use /api/artists/id
-    // We'll try the most common one first.
-    const { data } = await saavnRequest(`/api/artists?id=${id}`);
-    return data;
+    return await getOrSetCache(`artist:${id}`, 21600, async () => {
+        // Some versions of the API use /api/artists?id=, others use /api/artists/id
+        const { data } = await saavnRequest(`/api/artists?id=${id}`);
+        return data;
+    });
 }
 
 async function getRecommendationsForSong(id) {
-    const { data } = await saavnRequest(`/api/songs/${id}/suggestions`);
-    return data;
+    return await getOrSetCache(`suggestions:${id}`, 3600, async () => {
+        const { data } = await saavnRequest(`/api/songs/${id}/suggestions`);
+        return data;
+    });
 }
 
 async function getAlbumDetails(id) {
-    const { data } = await saavnRequest(`/api/albums?id=${id}`);
-    return data;
+    return await getOrSetCache(`album:${id}`, 3600, async () => {
+        const { data } = await saavnRequest(`/api/albums?id=${id}`);
+        return data;
+    });
 }
 
 const mapAlbum = (album) => {
