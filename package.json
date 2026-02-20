@@ -16,7 +16,6 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/rate-limit": "^10.3.0",
     "axios": "^1.13.5",
-    "bottleneck": "^2.19.5",
     "dotenv": "^17.3.1",
     "fastify": "^5.7.4",
     "fastify-plugin": "^5.1.0",
