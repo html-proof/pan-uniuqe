@@ -6,6 +6,10 @@ const UPDATE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 async function runWorker() {
     console.log('Worker: Starting recommendation update cycle...');
     try {
+        if (!db) {
+            console.warn('Worker: skipping cycle, database unavailable');
+            return;
+        }
         const usersSnap = await db.ref('users').once('value');
         if (usersSnap.exists()) {
             const users = usersSnap.val();
