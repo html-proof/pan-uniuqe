@@ -24,7 +24,9 @@ async function getSongDetails(id) {
 }
 
 async function getArtistDetails(id) {
-    const { data } = await saavnClient.get(`/api/artists/${id}`);
+    // Some versions of the API use /api/artists?id=, others use /api/artists/id
+    // We'll try the most common one first.
+    const { data } = await saavnClient.get(`/api/artists?id=${id}`);
     return data;
 }
 

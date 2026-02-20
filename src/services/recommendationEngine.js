@@ -2,6 +2,10 @@ const { db } = require('../config/firebase');
 const { getRecommendationsForSong, getSearchSongs } = require('./saavn');
 
 async function generateRecommendationsForUser(userId) {
+    if (!db) {
+        console.warn('generateRecommendationsForUser: database unavailable');
+        return;
+    }
     const userRef = db.ref(`users/${userId}`);
     const snapshot = await userRef.once('value');
     const userData = snapshot.val();
@@ -28,14 +32,22 @@ async function generateRecommendationsForUser(userId) {
         .slice(0, 3)
         .map(([artist]) => artist);
 
-    for (const artist of topArtists) {
+    for (const artistId of topArtists) {
         try {
-            const resp = await getSearchSongs(artist);
-            if (resp && resp.data && resp.data.results) {
-                recommendations.becauseYouListenedTo[artist] = resp.data.results.slice(0, 10).map(s => s.id);
+            // Using getArtistDetails (ID based) is more accurate than searching for the ID string
+            const resp = await getArtistDetails(artistId);
+            const artistData = resp.data || resp;
+
+            if (artistData && artistData.topSongs) {
+                const artistName = artistData.name || artistId;
+                recommendations.becauseYouListenedTo[artistName] = artistData.topSongs.slice(0, 10).map(s => s.id);
+            } else if (artistData && artistData.results) {
+                // Handle different potential structures
+                const artistName = artistData.name || artistId;
+                recommendations.becauseYouListenedTo[artistName] = artistData.results.slice(0, 10).map(s => s.id);
             }
         } catch (e) {
-            console.error(`Error fetching for artist ${artist}:`, e.message);
+            console.error(`Error fetching for artist ${artistId}:`, e.message);
         }
     }
 
@@ -74,6 +86,24 @@ async function generateRecommendationsForUser(userId) {
             }
         } catch (e) {
             console.error(`Error fetching similar for ${targetSongId}:`, e.message);
+        }
+    }
+
+    // 4. Final Fallback: If Home Feed is still empty (brand new user), fetch trending songs
+    if (recommendations.homeFeed.length === 0) {
+        try {
+            const preferredLangs = Object.keys(languages);
+            const queryLang = preferredLangs.length > 0 ? preferredLangs[0] : 'Hindi';
+            console.log(`Cold start: Fetching global top ${queryLang} songs for homeFeed`);
+
+            const trending = await getSearchSongs(`top ${queryLang} songs`);
+            if (trending && trending.data && trending.data.results) {
+                recommendations.homeFeed = trending.data.results.slice(0, 15).map(s => s.id);
+            } else if (trending && trending.results) {
+                recommendations.homeFeed = trending.results.slice(0, 15).map(s => s.id);
+            }
+        } catch (e) {
+            console.error('Error fetching trending fallback:', e.message);
         }
     }
 
