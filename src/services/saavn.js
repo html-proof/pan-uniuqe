@@ -1,13 +1,8 @@
-const axios = require('axios');
+const { request } = require('undici');
 const { getOrSetCache } = require('./cache');
 require('dotenv').config();
 
 const SAAVN_BASE_URL = process.env.SAAVN_API_URL || 'https://saavn.sumit.co';
-
-const saavnClient = axios.create({
-    baseURL: SAAVN_BASE_URL,
-    timeout: 10000,
-});
 
 // Helper for delaying retries
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -23,8 +18,8 @@ const limiter = new Bottleneck({
 // Circuit Breaker state
 let saavnBlockedUntil = 0;
 
-// Simple retry wrapper for axios with global serialization via bottleneck
-async function saavnRequest(url, retries = 2) {
+// Simple retry wrapper for undici with global serialization via bottleneck
+async function saavnRequest(urlPath, retries = 2) {
     if (Date.now() < saavnBlockedUntil) {
         throw new Error(`[Circuit Breaker] Saavn temporarly disabled (Cloudflare limited). Try again in ${Math.ceil((saavnBlockedUntil - Date.now()) / 1000)}s`);
     }
@@ -32,7 +27,24 @@ async function saavnRequest(url, retries = 2) {
     const executeRequest = async () => {
         for (let i = 0; i < retries; i++) {
             try {
-                return await saavnClient.get(url);
+                const fullUrl = `${SAAVN_BASE_URL}${urlPath}`;
+                const response = await request(fullUrl, {
+                    method: 'GET',
+                    headersTimeout: 10000,
+                    bodyTimeout: 10000
+                });
+
+                if (response.statusCode >= 400) {
+                    const error = new Error(`Request failed with status code ${response.statusCode}`);
+                    error.response = { status: response.statusCode };
+                    throw error;
+                }
+
+                // Consume the response body stream to json
+                const data = await response.body.json();
+
+                // Return wrapped to mimic axios response structure so the rest of the code works
+                return { data };
             } catch (error) {
                 const is429 = error.response && error.response.status === 429;
 
@@ -45,7 +57,7 @@ async function saavnRequest(url, retries = 2) {
 
                 if (i < retries - 1) {
                     const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
-                    console.warn(`Saavn API Error: Retrying ${url} in ${Math.round(delay)}ms (Attempt ${i + 1}/${retries})`);
+                    console.warn(`Saavn API Error: Retrying ${urlPath} in ${Math.round(delay)}ms (Attempt ${i + 1}/${retries})`);
                     await sleep(delay);
                     continue;
                 }
