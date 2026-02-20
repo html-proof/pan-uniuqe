@@ -7,15 +7,19 @@ const admin = require('firebase-admin');
 // of including the JSON file in the repository (which is bad practice).
 // For now, it will load it conditionally or just from the JSON.
 let serviceAccount;
-try {
-    serviceAccount = require('./firebase-service-account.json');
-} catch (e) {
-    // Parsing from env mapping if on railway
-    serviceAccount = {
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    };
+// Parsing from env mapping if on railway
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} else {
+    try {
+        serviceAccount = require('./firebase-service-account.json');
+    } catch (e) {
+        serviceAccount = {
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        };
+    }
 }
 
 if (!admin.apps.length) {
