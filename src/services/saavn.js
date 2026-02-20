@@ -72,8 +72,8 @@ async function getSongDetails(id) {
 async function getArtistDetails(id) {
     if (!id || id === 'Unknown Artist') return null;
     return await getOrSetCache(`artist:${id}`, 21600, async () => {
-        // Some versions of the API use /api/artists?id=, others use /api/artists/id
-        const { data } = await saavnRequest(`/api/artists?id=${id}`);
+        // User requested exactly: /api/artists/{id}
+        const { data } = await saavnRequest(`/api/artists/${id}`);
         return data;
     });
 }
@@ -81,6 +81,7 @@ async function getArtistDetails(id) {
 async function getRecommendationsForSong(id) {
     if (!id || id === 'Unknown Artist') return null;
     return await getOrSetCache(`suggestions:${id}`, 3600, async () => {
+        // User requested exactly: /api/songs/{id}/suggestions
         const { data } = await saavnRequest(`/api/songs/${id}/suggestions`);
         return data;
     });
@@ -89,6 +90,8 @@ async function getRecommendationsForSong(id) {
 async function getAlbumDetails(id) {
     if (!id || id === 'Unknown Artist') return null;
     return await getOrSetCache(`album:${id}`, 3600, async () => {
+        // We were using /api/albums?id=. The Python script shows no id endpoint, but usually it's /api/albums?id=
+        // Let's stick with /api/albums?id= for now since it works when not rate limited.
         const { data } = await saavnRequest(`/api/albums?id=${id}`);
         return data;
     });
