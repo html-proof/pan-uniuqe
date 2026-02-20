@@ -1,5 +1,5 @@
 const { db } = require('../config/firebase');
-const { getRecommendationsForSong, getSearchSongs } = require('./saavn');
+const { getRecommendationsForSong, getSearchSongs, getArtistDetails } = require('./saavn');
 
 async function generateRecommendationsForUser(userId) {
     if (!db) {
