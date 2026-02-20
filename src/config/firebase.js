@@ -6,10 +6,12 @@ const admin = require('firebase-admin');
 // this from an environment variable (e.g. FIREBASE_PRIVATE_KEY) instead
 // of including the JSON file in the repository (which is bad practice).
 // For now, it will load it conditionally or just from the JSON.
+let serviceAccount = {};
+
 // Parsing from env mapping if on railway
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    let raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
     try {
-        let raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
         // Remove surrounding quotes if they were added by the hosting provider/UI
         if (raw.startsWith('"') && raw.endsWith('"')) {
             raw = raw.substring(1, raw.length - 1).trim();
@@ -24,7 +26,8 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
                 serviceAccount = JSON.parse(decoded);
                 console.log('Successfully parsed Base64 JSON');
             } catch (base64Error) {
-                throw new Error(`Base64 decode/parse failed: ${base64Error.message}`);
+                console.error(`Base64 decode/parse failed: ${base64Error.message}`);
+                // If it looks like base64 but fails, we should still fall back
             }
         } else {
             serviceAccount = JSON.parse(raw);
@@ -32,6 +35,16 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
         }
     } catch (e) {
         console.error('CRITICAL: FIREBASE_SERVICE_ACCOUNT parsing failed:', e.message);
+
+        // Advanced Debugging: Find the problematic character
+        const match = e.message.match(/at position (\d+)/);
+        if (match && raw) {
+            const pos = parseInt(match[1], 10);
+            const start = Math.max(0, pos - 20);
+            const end = Math.min(raw.length, pos + 20);
+            console.error(`Context at error (pos ${pos}): "...${raw.substring(start, end).replace(/\n/g, '\\n')}..."`);
+            console.error(`Character at pos ${pos}: "${raw[pos]}"`);
+        }
     }
 }
 
