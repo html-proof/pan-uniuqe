@@ -27,11 +27,21 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
                 console.log('Successfully parsed Base64 JSON');
             } catch (base64Error) {
                 console.error(`Base64 decode/parse failed: ${base64Error.message}`);
-                // If it looks like base64 but fails, we should still fall back
+                // If it looks like base64 but fails, we continue to fallback 
             }
         } else {
-            serviceAccount = JSON.parse(raw);
-            console.log('Successfully parsed raw JSON');
+            // AUTO-FIX: Railway sometimes messes up backslashes in JSON env vars
+            // It might turn \n into \\n or \x (corrupted). 
+            try {
+                serviceAccount = JSON.parse(raw);
+                console.log('Successfully parsed raw JSON');
+            } catch (initialError) {
+                console.warn('Initial JSON parse failed, attempting auto-fix for escape characters...');
+                // Try to fix common corruption patterns like \x or bad \n
+                const fixed = raw.replace(/\\x/g, '\\n').replace(/\\([^"\\/bfnrtu])/g, '$1');
+                serviceAccount = JSON.parse(fixed);
+                console.log('Successfully parsed auto-fixed JSON');
+            }
         }
     } catch (e) {
         console.error('CRITICAL: FIREBASE_SERVICE_ACCOUNT parsing failed:', e.message);
@@ -43,7 +53,6 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
             const start = Math.max(0, pos - 20);
             const end = Math.min(raw.length, pos + 20);
             console.error(`Context at error (pos ${pos}): "...${raw.substring(start, end).replace(/\n/g, '\\n')}..."`);
-            console.error(`Character at pos ${pos}: "${raw[pos]}"`);
         }
     }
 }
@@ -63,20 +72,28 @@ if (!serviceAccount.projectId || !serviceAccount.privateKey || !serviceAccount.c
     console.warn('WARNING: Firebase credentials appear incomplete. Ensure FIREBASE_SERVICE_ACCOUNT or individual vars are set correctly.');
 }
 
+let db = null;
+let auth = null;
+
 if (!admin.apps.length) {
     try {
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            databaseURL: process.env.DATABASE_URL || "https://sample-music-65323-default-rtdb.asia-southeast1.firebasedatabase.app"
-        });
-        console.log('Firebase initialized successfully');
+        if (serviceAccount.projectId && serviceAccount.privateKey) {
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                databaseURL: process.env.DATABASE_URL || "https://sample-music-65323-default-rtdb.asia-southeast1.firebasedatabase.app"
+            });
+            console.log('Firebase initialized successfully');
+            db = admin.database();
+            auth = admin.auth();
+        } else {
+            console.error('CRITICAL: Cannot initialize Firebase - missing Project ID or Private Key');
+        }
     } catch (initError) {
         console.error('FATAL: Firebase initialization failed:', initError.message);
-        // Do not crash the entire server, let the routes handle the lack of DB if possible
     }
+} else {
+    db = admin.database();
+    auth = admin.auth();
 }
-
-const db = admin.database();
-const auth = admin.auth();
 
 module.exports = { admin, db, auth };
