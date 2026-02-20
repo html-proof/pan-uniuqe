@@ -38,6 +38,23 @@ async function getRecommendationsForSong(id) {
 const mapSong = (song) => {
     if (!song) return null;
 
+    const getArtistName = (data) => {
+        if (!data) return 'Unknown Artist';
+        if (typeof data === 'string') return data;
+        if (Array.isArray(data)) {
+            return data.map(a => (typeof a === 'object' ? a.name : a)).filter(Boolean).join(', ');
+        }
+        if (typeof data === 'object') return data.name || data.title || 'Unknown Artist';
+        return String(data);
+    };
+
+    const getAlbumName = (data) => {
+        if (!data) return 'Unknown Album';
+        if (typeof data === 'string') return data;
+        if (typeof data === 'object') return data.name || data.title || 'Unknown Album';
+        return String(data);
+    };
+
     // Extract all useful qualities (96, 160, 320) so the client can optimize data usage
     let streams = { low: '', medium: '', high: '' };
 
@@ -68,8 +85,8 @@ const mapSong = (song) => {
     return {
         id: song.id,
         name: song.name || song.title,
-        artist: song.primaryArtists || song.artists,
-        album: song.album?.name || song.album,
+        artist: getArtistName(song.primaryArtists || song.artists),
+        album: getAlbumName(song.album),
         image: imageUrl,
         duration: song.duration,
         language: song.language,
