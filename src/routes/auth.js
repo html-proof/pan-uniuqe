@@ -12,6 +12,15 @@ async function routes(fastify, options) {
             const decodedToken = await auth.verifyIdToken(token);
             const uid = decodedToken.uid;
 
+            const userRef = db.ref(`users/${uid}/profile`);
+
+            const userData = {
+                name: decodedToken.name || '',
+                email: decodedToken.email || '',
+                picture: decodedToken.picture || '',
+                lastLoginAt: Date.now()
+            };
+
             // Correctly check if preferences exist in the DB (onboarding completed)
             const prefSnapshot = await db.ref(`users/${uid}/preferences`).once('value');
             const preferences = prefSnapshot.val() || {};
