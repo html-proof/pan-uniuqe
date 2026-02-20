@@ -29,9 +29,9 @@ async function runWorker() {
 }
 
 // Start worker loop
-setInterval(runWorker, UPDATE_INTERVAL_MS);
+// setInterval(runWorker, UPDATE_INTERVAL_MS);
 
 // Run immediately on boot
-setTimeout(runWorker, 5000);
+// setTimeout(runWorker, 5000);
 
-module.exports = {};
+module.exports = { runWorker }; // Exporting in case we ever want to run manually
