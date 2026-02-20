@@ -12,37 +12,49 @@ const saavnClient = axios.create({
 // Helper for delaying retries
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+const Bottleneck = require('bottleneck');
+
+// API Limiter to prevent flooding Saavn API
+const limiter = new Bottleneck({
+    minTime: 1200, // 1.2s between requests (as suggested by user for safety)
+    maxConcurrent: 1
+});
+
 // Circuit Breaker state
 let saavnBlockedUntil = 0;
 
-// Simple retry wrapper for axios without local queue bottleneck
+// Simple retry wrapper for axios with global serialization via bottleneck
 async function saavnRequest(url, retries = 2) {
     if (Date.now() < saavnBlockedUntil) {
         throw new Error(`[Circuit Breaker] Saavn temporarly disabled (Cloudflare limited). Try again in ${Math.ceil((saavnBlockedUntil - Date.now()) / 1000)}s`);
     }
 
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await saavnClient.get(url);
-        } catch (error) {
-            const is429 = error.response && error.response.status === 429;
+    const executeRequest = async () => {
+        for (let i = 0; i < retries; i++) {
+            try {
+                return await saavnClient.get(url);
+            } catch (error) {
+                const is429 = error.response && error.response.status === 429;
 
-            // If cloudflare blocked the UNOFFICIAL wrapper API globally
-            if (is429) {
-                saavnBlockedUntil = Date.now() + 60000; // block for 60s
-                console.error(`[Circuit Breaker] Cloudflare 429 Limit Hit! Blocking all Saavn API calls for 60s.`);
-                throw new Error("Saavn temporarily disabled (429 Rate Limit)");
-            }
+                // If cloudflare blocked the UNOFFICIAL wrapper API globally
+                if (is429) {
+                    saavnBlockedUntil = Date.now() + 60000; // block for 60s
+                    console.error(`[Circuit Breaker] Cloudflare 429 Limit Hit! Blocking all Saavn API calls for 60s.`);
+                    throw new Error("Saavn temporarily disabled (429 Rate Limit)");
+                }
 
-            if (i < retries - 1) {
-                const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
-                console.warn(`Saavn API Error: Retrying ${url} in ${Math.round(delay)}ms (Attempt ${i + 1}/${retries})`);
-                await sleep(delay);
-                continue;
+                if (i < retries - 1) {
+                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                    console.warn(`Saavn API Error: Retrying ${url} in ${Math.round(delay)}ms (Attempt ${i + 1}/${retries})`);
+                    await sleep(delay);
+                    continue;
+                }
+                throw error;
             }
-            throw error;
         }
-    }
+    };
+
+    return limiter.schedule(() => executeRequest());
 }
 
 async function getSearch(query, page = 1, limit = 10) {
