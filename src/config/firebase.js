@@ -21,7 +21,7 @@ try {
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        databaseURL: "https://sample-music-65323-default-rtdb.asia-southeast1.firebasedatabase.app"
+        databaseURL: process.env.DATABASE_URL || "https://sample-music-65323-default-rtdb.asia-southeast1.firebasedatabase.app"
     });
 }
 
