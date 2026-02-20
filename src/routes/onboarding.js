@@ -1,5 +1,6 @@
 const { getSearchSongs, getSearch } = require('../services/saavn');
 const { getOrSetCache } = require('../services/cache');
+const { generateRecommendationsForUser } = require('../services/recommendationEngine');
 
 // 24 Hour Cache for Languages to keep it fast
 const LANGUAGE_CACHE_TTL = 86400;
@@ -145,6 +146,9 @@ async function routes(fastify, options) {
                     await db.ref(`users/${uid}/taste/artists/${artist}`).set(20);
                 }
             }
+
+            // Trigger immediate recommendation update so Home is populated
+            generateRecommendationsForUser(uid).catch(e => fastify.log.error(e));
 
             return reply.send({ success: true, message: 'Preferences saved' });
         } catch (error) {
