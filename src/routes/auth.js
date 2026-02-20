@@ -22,16 +22,17 @@ async function routes(fastify, options) {
                 lastLoginAt: Date.now()
             };
 
-            if (!snapshot.exists()) {
-                userData.createdAt = Date.now();
-                // Preferences will be populated later via /onboarding/save
-                userData.preferredLanguages = [];
-                userData.preferredArtists = [];
-            }
+            const onboardingCompleted = snapshot.exists() &&
+                userData.preferredLanguages && userData.preferredLanguages.length > 0 &&
+                userData.preferredArtists && userData.preferredArtists.length > 0;
 
             await userRef.update(userData);
 
-            return { success: true, user: { uid, ...userData } };
+            return {
+                success: true,
+                onboardingCompleted,
+                user: { uid, ...userData }
+            };
         } catch (error) {
             fastify.log.error(error);
             return reply.code(401).send({ error: 'Unauthorized', details: error.message });
