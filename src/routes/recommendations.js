@@ -12,6 +12,7 @@ async function routes(fastify, options) {
 
         const snapshot = await userRef.once('value');
         if (!snapshot.exists()) {
+            console.log(`No recommendations found in DB for user ${userId}`);
             return {
                 homeFeed: [],
                 continueListening: [],
@@ -19,7 +20,9 @@ async function routes(fastify, options) {
             };
         }
 
-        return snapshot.val();
+        const data = snapshot.val();
+        console.log(`Returning recommendations for ${userId}: homeFeed(${data.homeFeed?.length || 0}), continueListening(${data.continueListening?.length || 0})`);
+        return data;
     });
 }
 

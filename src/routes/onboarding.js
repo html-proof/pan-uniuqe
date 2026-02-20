@@ -147,8 +147,8 @@ async function routes(fastify, options) {
                 }
             }
 
-            // Trigger immediate recommendation update so Home is populated
-            generateRecommendationsForUser(uid).catch(e => fastify.log.error(e));
+            // Await recommendation update so Home is populated on first visit
+            await generateRecommendationsForUser(uid).catch(e => fastify.log.error(e));
 
             return reply.send({ success: true, message: 'Preferences saved' });
         } catch (error) {
