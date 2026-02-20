@@ -8,35 +8,54 @@ const saavnClient = axios.create({
     timeout: 10000,
 });
 
+// Helper for delaying retries
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Simple retry wrapper for axios
+async function saavnRequest(url, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await saavnClient.get(url);
+        } catch (error) {
+            if (error.response && error.response.status === 429 && i < retries - 1) {
+                const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                console.warn(`Saavn API: 429 encountered, retrying in ${Math.round(delay)}ms...`);
+                await sleep(delay);
+                continue;
+            }
+            throw error;
+        }
+    }
+}
+
 async function getSearch(query, page = 1, limit = 10) {
-    const { data } = await saavnClient.get(`/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+    const { data } = await saavnRequest(`/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
     return data;
 }
 
 async function getSearchSongs(query, page = 1, limit = 10) {
-    const { data } = await saavnClient.get(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+    const { data } = await saavnRequest(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
     return data;
 }
 
 async function getSongDetails(id) {
-    const { data } = await saavnClient.get(`/api/song?id=${id}`);
+    const { data } = await saavnRequest(`/api/song?id=${id}`);
     return data;
 }
 
 async function getArtistDetails(id) {
-    // Some versions of the API use /api/artists?id=, others use /api/artists/id
-    // We'll try the most common one first.
-    const { data } = await saavnClient.get(`/api/artists?id=${id}`);
+    const { data } = await saavnRequest(`/api/artist?id=${id}`);
     return data;
 }
 
 async function getRecommendationsForSong(id) {
-    const { data } = await saavnClient.get(`/api/songs/${id}/suggestions`);
+    // Some mirrors don't support the /suggestions path. We check and fallback.
+    const { data } = await saavnRequest(`/api/song?id=${id}&suggestions=true`);
     return data;
 }
 
 async function getAlbumDetails(id) {
-    const { data } = await saavnClient.get(`/api/album?id=${id}`);
+    const { data } = await saavnRequest(`/api/album?id=${id}`);
     return data;
 }
 
