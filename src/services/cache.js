@@ -1,8 +1,8 @@
 const NodeCache = require('node-cache');
 
 // Standard TTL for cache
-// Search: 5 mins, Songs: 1 hour, Artists: 24 hours
-const cache = new NodeCache({ stdTTL: 300, checkperiod: 120 });
+// Search: 10 mins, Songs: 6 hours, Artists: 24 hours
+const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
 
 // Helper to use cache directly
 async function getOrSetCache(key, ttl, fetchFunction) {

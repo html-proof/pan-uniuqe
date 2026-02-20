@@ -6,6 +6,10 @@ fastify.register(require('@fastify/cors'), {
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 });
+fastify.register(require('@fastify/rate-limit'), {
+    max: 20, // maximum of 20 requests per IP
+    timeWindow: 1000 // per 1 second
+});
 fastify.register(require('@fastify/compress'), { global: true });
 
 // Basic health check route
@@ -23,10 +27,20 @@ fastify.register(require('./routes/recommendations'), { prefix: '/recommendation
 fastify.register(require('./routes/onboarding'), { prefix: '/onboarding' });
 fastify.register(require('./routes/album'), { prefix: '/album' });
 
-// Pre-bake the cache for fallback trending IDs so Home Screen never suffers 429
+// Array of popular charts to pre-cache periodically
+const popularQueries = [
+    'top songs',
+    'trending hits',
+    'new releases',
+    'top malayalam songs',
+    'top tamil songs',
+    'top hindi songs'
+];
+
+// Pre-bake the cache for fallback trending IDs and popular charts
 const preloadCache = async () => {
     try {
-        const { getSongsBulk } = require('./services/saavn');
+        const { getSongsBulk, getSearch } = require('./services/saavn');
         const { cache } = require('./services/cache');
         const defaultFallbackIds = ['fBGE4hKU', 'e4i4TdLr', 'wFRQqJeJ', 'u2D2mHdO', 'oqbXmtgZ', 'nXKbc8rl', '4tpEcBbk'];
 
@@ -44,6 +58,15 @@ const preloadCache = async () => {
             }
             fastify.log.info(`Preloaded ${loaded} essential songs into cache. Home Screen shielded.`);
         }
+
+        fastify.log.info('Preloading popular search categories...');
+        for (const query of popularQueries) {
+            await getSearch(query, 1, 10);
+            fastify.log.info(`Cached category: ${query}`);
+            // Small delay to be polite
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
     } catch (e) {
         fastify.log.warn(`Failed to preload cache: ${e.message}`);
     }
@@ -59,8 +82,11 @@ const start = async () => {
         // Start background workers
         require('./workers/updateWorker');
 
-        // Prime the cache
+        // Prime the cache on boot
         setTimeout(preloadCache, 2000);
+
+        // Re-prime the cache every 4 hours automatically to maintain instant search for Top Charts
+        setInterval(preloadCache, 4 * 60 * 60 * 1000);
     } catch (err) {
         fastify.log.error(err);
         process.exit(1);

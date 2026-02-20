@@ -1,4 +1,5 @@
 const axios = require('axios');
+const Bottleneck = require('bottleneck');
 const { getOrSetCache } = require('./cache');
 require('dotenv').config();
 
@@ -12,21 +13,38 @@ const saavnClient = axios.create({
 // Helper for delaying retries
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Global semaphore to ensure only ONE request hits Saavn at a time
-let requestQueue = Promise.resolve();
+// API Limiter to prevent flooding Saavn API
+const limiter = new Bottleneck({
+    minTime: 500, // 500ms between requests
+    maxConcurrent: 1
+});
 
-// Simple retry wrapper for axios with global serialization
-async function saavnRequest(url, retries = 5) {
+// Circuit Breaker state
+let saavnBlockedUntil = 0;
+
+// Simple retry wrapper for axios with global serialization via bottleneck
+async function saavnRequest(url, retries = 3) {
+    if (Date.now() < saavnBlockedUntil) {
+        throw new Error(`[Circuit Breaker] Saavn temporarly disabled (Cloudflare limited). Try again in ${Math.ceil((saavnBlockedUntil - Date.now()) / 1000)}s`);
+    }
+
     const executeRequest = async () => {
         for (let i = 0; i < retries; i++) {
             try {
                 return await saavnClient.get(url);
             } catch (error) {
                 const is429 = error.response && error.response.status === 429;
-                if (is429 && i < retries - 1) {
-                    // Exponential backoff: 1s, 2s, 4s, 8s... + jitter
+
+                // If cloudflare blocked the UNOFFICIAL wrapper API globally
+                if (is429) {
+                    saavnBlockedUntil = Date.now() + 60000; // block for 60s
+                    console.error(`[Circuit Breaker] Cloudflare 429 Limit Hit! Blocking all Saavn API calls for 60s.`);
+                    throw new Error("Saavn temporarily disabled (429 Rate Limit)");
+                }
+
+                if (i < retries - 1) {
                     const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
-                    console.warn(`Saavn API [429]: Retrying ${url} in ${Math.round(delay)}ms (Attempt ${i + 1}/${retries})`);
+                    console.warn(`Saavn API Error: Retrying ${url} in ${Math.round(delay)}ms (Attempt ${i + 1}/${retries})`);
                     await sleep(delay);
                     continue;
                 }
@@ -35,35 +53,40 @@ async function saavnRequest(url, retries = 5) {
         }
     };
 
-    // Serialize all requests through the global queue
-    // We use .catch(() => {}) to ensure the chain continues even if a request ultimately fails
-    const result = new Promise((resolve, reject) => {
-        requestQueue = requestQueue.catch(() => { }).then(async () => {
-            try {
-                const response = await executeRequest();
-                resolve(response);
-            } catch (err) {
-                reject(err);
-            }
-        });
-    });
-
-    return result;
+    return limiter.schedule(() => executeRequest());
 }
 
 async function getSearch(query, page = 1, limit = 10) {
-    const { data } = await saavnRequest(`/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
-    return data;
+    try {
+        return await getOrSetCache(`search:${query}:${page}:${limit}`, 600, async () => {
+            const { data } = await saavnRequest(`/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+            return data;
+        });
+    } catch (e) {
+        if (e.message.includes("available") || e.message.includes("429") || e.message.includes("disabled")) {
+            return { results: [], _isFallback: true };
+        }
+        throw e;
+    }
 }
 
 async function getSearchSongs(query, page = 1, limit = 10) {
-    const { data } = await saavnRequest(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
-    return data;
+    try {
+        return await getOrSetCache(`searchSongs:${query}:${page}:${limit}`, 600, async () => {
+            const { data } = await saavnRequest(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+            return data;
+        });
+    } catch (e) {
+        if (e.message.includes("disabled") || e.message.includes("429")) {
+            return { results: [], _isFallback: true };
+        }
+        throw e;
+    }
 }
 
 async function getSongDetails(id) {
     if (!id || id === 'Unknown Artist') return null;
-    return await getOrSetCache(`song:${id}`, 3600, async () => {
+    return await getOrSetCache(`song:${id}`, 21600, async () => {
         const { data } = await saavnRequest(`/api/songs/${id}`);
         return data;
     });
@@ -71,7 +94,7 @@ async function getSongDetails(id) {
 
 async function getArtistDetails(id) {
     if (!id || id === 'Unknown Artist') return null;
-    return await getOrSetCache(`artist:${id}`, 21600, async () => {
+    return await getOrSetCache(`artist:${id}`, 86400, async () => {
         // User requested exactly: /api/artists/{id}
         const { data } = await saavnRequest(`/api/artists/${id}`);
         return data;
@@ -80,7 +103,7 @@ async function getArtistDetails(id) {
 
 async function getRecommendationsForSong(id) {
     if (!id || id === 'Unknown Artist') return null;
-    return await getOrSetCache(`suggestions:${id}`, 3600, async () => {
+    return await getOrSetCache(`suggestions:${id}`, 21600, async () => {
         // User requested exactly: /api/songs/{id}/suggestions
         const { data } = await saavnRequest(`/api/songs/${id}/suggestions`);
         return data;
@@ -89,7 +112,7 @@ async function getRecommendationsForSong(id) {
 
 async function getAlbumDetails(id) {
     if (!id || id === 'Unknown Artist') return null;
-    return await getOrSetCache(`album:${id}`, 3600, async () => {
+    return await getOrSetCache(`album:${id}`, 86400, async () => {
         // We were using /api/albums?id=. The Python script shows no id endpoint, but usually it's /api/albums?id=
         // Let's stick with /api/albums?id= for now since it works when not rate limited.
         const { data } = await saavnRequest(`/api/albums?id=${id}`);
@@ -181,10 +204,15 @@ const mapSong = (song) => {
 
 async function getSongsBulk(ids) {
     if (!ids || ids.length === 0) return [];
-    const idStr = ids.join(',');
-    const response = await saavnRequest(`/api/songs?ids=${idStr}`);
-    const dataArray = response.data?.data || response.data || [];
-    return Array.isArray(dataArray) ? dataArray : [dataArray];
+    try {
+        const idStr = ids.join(',');
+        const response = await saavnRequest(`/api/songs?ids=${idStr}`);
+        const dataArray = response.data?.data || response.data || [];
+        return Array.isArray(dataArray) ? dataArray : [dataArray];
+    } catch (e) {
+        if (e.message.includes("disabled") || e.message.includes("429")) return [];
+        throw e;
+    }
 }
 
 module.exports = {
