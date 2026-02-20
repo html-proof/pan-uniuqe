@@ -35,6 +35,34 @@ async function getRecommendationsForSong(id) {
     return data;
 }
 
+async function getAlbumDetails(id) {
+    const { data } = await saavnClient.get(`/api/albums?id=${id}`);
+    return data;
+}
+
+const mapAlbum = (album) => {
+    if (!album) return null;
+
+    let imageUrl = '';
+    if (album.image && Array.isArray(album.image)) {
+        const quality150 = album.image.find(i => i.quality === '150x150') || album.image[0];
+        imageUrl = quality150.url || quality150;
+    } else if (album.image && typeof album.image === 'string') {
+        imageUrl = album.image.replace('500x500', '150x150');
+    }
+
+    return {
+        id: album.id,
+        name: album.name || album.title,
+        artist: album.artist || (album.artists && album.artists.primary ? album.artists.primary.map(a => a.name).join(', ') : 'Unknown Artist'),
+        image: imageUrl,
+        year: album.year,
+        language: album.language,
+        songCount: album.songCount,
+        songs: album.songs ? album.songs.map(mapSong) : []
+    };
+};
+
 const mapSong = (song) => {
     if (!song) return null;
 
@@ -100,5 +128,7 @@ module.exports = {
     getSongDetails,
     getArtistDetails,
     getRecommendationsForSong,
+    getAlbumDetails,
     mapSong,
+    mapAlbum,
 };

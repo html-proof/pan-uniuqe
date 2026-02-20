@@ -8,7 +8,18 @@ async function routes(fastify, options) {
 
         return await getOrSetCache(`search:all:${q}:${page}:${limit}`, 300, async () => {
             const data = await getSearch(q, page, limit);
-            return data;
+            const results = data?.data || data;
+
+            return {
+                songs: results?.songs?.results?.map(mapSong) || [],
+                albums: results?.albums?.results?.map(album => ({
+                    id: album.id,
+                    name: album.title,
+                    artist: album.artist,
+                    image: album.image?.find(i => i.quality === '150x150')?.url || album.image?.[0]?.url || '',
+                    type: 'album'
+                })) || []
+            };
         });
     });
 

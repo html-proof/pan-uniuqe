@@ -21,6 +21,7 @@ fastify.register(require('./routes/artist'), { prefix: '/artist' });
 fastify.register(require('./routes/activity'), { prefix: '/activity' });
 fastify.register(require('./routes/recommendations'), { prefix: '/recommendations' });
 fastify.register(require('./routes/onboarding'), { prefix: '/onboarding' });
+fastify.register(require('./routes/album'), { prefix: '/album' });
 
 // Start the server
 const start = async () => {
