@@ -1,5 +1,4 @@
 const axios = require('axios');
-const Bottleneck = require('bottleneck');
 const { getOrSetCache } = require('./cache');
 require('dotenv').config();
 
