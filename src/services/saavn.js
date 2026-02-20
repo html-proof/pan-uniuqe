@@ -97,6 +97,48 @@ async function getSearchSongs(query, page = 1, limit = 10) {
     }
 }
 
+async function getSearchAlbums(query, page = 1, limit = 10) {
+    try {
+        return await getOrSetCache(`searchAlbums:${query}:${page}:${limit}`, 600, async () => {
+            const { data } = await saavnRequest(`/api/search/albums?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+            return data;
+        }, true);
+    } catch (e) {
+        if (e.message.includes("disabled") || e.message.includes("429")) {
+            return { results: [], _isFallback: true };
+        }
+        throw e;
+    }
+}
+
+async function getSearchArtists(query, page = 1, limit = 10) {
+    try {
+        return await getOrSetCache(`searchArtists:${query}:${page}:${limit}`, 600, async () => {
+            const { data } = await saavnRequest(`/api/search/artists?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+            return data;
+        }, true);
+    } catch (e) {
+        if (e.message.includes("disabled") || e.message.includes("429")) {
+            return { results: [], _isFallback: true };
+        }
+        throw e;
+    }
+}
+
+async function getSearchPlaylists(query, page = 1, limit = 10) {
+    try {
+        return await getOrSetCache(`searchPlaylists:${query}:${page}:${limit}`, 600, async () => {
+            const { data } = await saavnRequest(`/api/search/playlists?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+            return data;
+        }, true);
+    } catch (e) {
+        if (e.message.includes("disabled") || e.message.includes("429")) {
+            return { results: [], _isFallback: true };
+        }
+        throw e;
+    }
+}
+
 async function getSongDetails(id) {
     if (!id || id === 'Unknown Artist') return null;
     return await getOrSetCache(`song:${id}`, 21600, async () => {
@@ -110,6 +152,22 @@ async function getArtistDetails(id) {
     return await getOrSetCache(`artist:${id}`, 86400, async () => {
         // User requested exactly: /api/artists/{id}
         const { data } = await saavnRequest(`/api/artists/${id}`);
+        return data;
+    });
+}
+
+async function getArtistSongs(id, page = 1, limit = 10) {
+    if (!id || id === 'Unknown Artist') return null;
+    return await getOrSetCache(`artistSongs:${id}:${page}:${limit}`, 21600, async () => {
+        const { data } = await saavnRequest(`/api/artists/${id}/songs?page=${page}&limit=${limit}`);
+        return data;
+    });
+}
+
+async function getArtistAlbums(id, page = 1, limit = 10) {
+    if (!id || id === 'Unknown Artist') return null;
+    return await getOrSetCache(`artistAlbums:${id}:${page}:${limit}`, 21600, async () => {
+        const { data } = await saavnRequest(`/api/artists/${id}/albums?page=${page}&limit=${limit}`);
         return data;
     });
 }
@@ -129,6 +187,14 @@ async function getAlbumDetails(id) {
         // We were using /api/albums?id=. The Python script shows no id endpoint, but usually it's /api/albums?id=
         // Let's stick with /api/albums?id= for now since it works when not rate limited.
         const { data } = await saavnRequest(`/api/albums?id=${id}`);
+        return data;
+    });
+}
+
+async function getPlaylistDetails(id) {
+    if (!id) return null;
+    return await getOrSetCache(`playlist:${id}`, 86400, async () => {
+        const { data } = await saavnRequest(`/api/playlists?id=${id}`);
         return data;
     });
 }
@@ -231,11 +297,17 @@ async function getSongsBulk(ids) {
 module.exports = {
     getSearch,
     getSearchSongs,
+    getSearchAlbums,
+    getSearchArtists,
+    getSearchPlaylists,
     getSongDetails,
     getSongsBulk,
     getArtistDetails,
+    getArtistSongs,
+    getArtistAlbums,
     getRecommendationsForSong,
     getAlbumDetails,
+    getPlaylistDetails,
     mapSong,
     mapAlbum,
 };
