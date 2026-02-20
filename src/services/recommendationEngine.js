@@ -36,7 +36,7 @@ async function generateRecommendationsForUser(userId) {
         try {
             // Using getArtistDetails (ID based) is more accurate than searching for the ID string
             const resp = await getArtistDetails(artistId);
-            const artistData = resp.data || resp;
+            const artistData = resp ? (resp.data || resp) : null;
 
             if (artistData && artistData.topSongs) {
                 const artistName = artistData.name || artistId;
