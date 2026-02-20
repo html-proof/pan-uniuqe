@@ -16,9 +16,16 @@ async function routes(fastify, options) {
 
         const songDetails = [];
         for (const id of ids) {
-            const data = await getSongDetails(id);
-            const song = mapSong(data?.data?.[0] || data);
-            if (song) songDetails.push(song);
+            try {
+                const data = await getSongDetails(id);
+                if (data) {
+                    const song = mapSong(data?.data?.[0] || data);
+                    if (song) songDetails.push(song);
+                }
+            } catch (error) {
+                console.warn(`[SongList] Soft-failing fetch for song ${id}: ${error.message}`);
+                // Continue to the next song instead of crashing the whole batch
+            }
         }
 
         return songDetails.filter(s => s !== null);
