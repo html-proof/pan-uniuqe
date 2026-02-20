@@ -24,23 +24,9 @@ async function routes(fastify, options) {
 
             if (!snapshot.exists()) {
                 userData.createdAt = Date.now();
-                // Set initial onboarding tastes if passed from frontend
-                const { onboardingLanguages, onboardingArtists } = request.body;
-
-                userData.preferredLanguages = onboardingLanguages || [];
-                userData.preferredArtists = onboardingArtists || [];
-
-                // Also map them into the taste profile directly for immediate recommendations!
-                if (onboardingLanguages) {
-                    for (const lang of onboardingLanguages) {
-                        await db.ref(`users/${uid}/taste/languages/${lang}`).set(10); // Heavy initial weight
-                    }
-                }
-                if (onboardingArtists) {
-                    for (const startist of onboardingArtists) {
-                        await db.ref(`users/${uid}/taste/artists/${startist}`).set(20); // Heavy initial weight
-                    }
-                }
+                // Preferences will be populated later via /onboarding/save
+                userData.preferredLanguages = [];
+                userData.preferredArtists = [];
             }
 
             await userRef.update(userData);

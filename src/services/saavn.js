@@ -8,13 +8,13 @@ const saavnClient = axios.create({
     timeout: 10000,
 });
 
-async function getSearch(query) {
-    const { data } = await saavnClient.get(`/api/search?query=${encodeURIComponent(query)}`);
+async function getSearch(query, page = 1, limit = 10) {
+    const { data } = await saavnClient.get(`/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
     return data;
 }
 
-async function getSearchSongs(query) {
-    const { data } = await saavnClient.get(`/api/search/songs?query=${encodeURIComponent(query)}`);
+async function getSearchSongs(query, page = 1, limit = 10) {
+    const { data } = await saavnClient.get(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
     return data;
 }
 
