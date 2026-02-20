@@ -62,7 +62,7 @@ async function getSearch(query, page = 1, limit = 10) {
         return await getOrSetCache(`search:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
             return data;
-        });
+        }, true);
     } catch (e) {
         if (e.message.includes("available") || e.message.includes("429") || e.message.includes("disabled")) {
             return { results: [], _isFallback: true };
@@ -76,7 +76,7 @@ async function getSearchSongs(query, page = 1, limit = 10) {
         return await getOrSetCache(`searchSongs:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
             return data;
-        });
+        }, true);
     } catch (e) {
         if (e.message.includes("disabled") || e.message.includes("429")) {
             return { results: [], _isFallback: true };

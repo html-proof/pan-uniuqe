@@ -29,12 +29,14 @@ fastify.register(require('./routes/album'), { prefix: '/album' });
 
 // Array of popular charts to pre-cache periodically
 const popularQueries = [
-    'top songs',
-    'trending hits',
-    'new releases',
-    'top malayalam songs',
-    'top tamil songs',
-    'top hindi songs'
+    'arijit singh',
+    'anirudh ravichander',
+    'shreya ghoshal',
+    'ar rahman',
+    'animal',
+    'jawan',
+    'leo',
+    'sid sriram'
 ];
 
 // Pre-bake the cache for fallback trending IDs and popular charts
