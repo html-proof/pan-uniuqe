@@ -9,7 +9,23 @@ const admin = require('firebase-admin');
 let serviceAccount;
 // Parsing from env mapping if on railway
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    try {
+        const raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+        // Support Base64 encoding for better reliability
+        if (raw && !raw.startsWith('{')) {
+            serviceAccount = JSON.parse(Buffer.from(raw, 'base64').toString('utf-8'));
+        } else {
+            serviceAccount = JSON.parse(raw);
+        }
+    } catch (e) {
+        console.error('Error parsing FIREBASE_SERVICE_ACCOUNT:', e.message);
+        // Fallback to individual vars if JSON fails
+        serviceAccount = {
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        };
+    }
 } else {
     try {
         serviceAccount = require('./firebase-service-account.json');
