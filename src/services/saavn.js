@@ -1,7 +1,7 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const SAAVN_BASE_URL = process.env.SAAVN_API_URL || 'https://jiosaavn-api.vercel.app';
+const SAAVN_BASE_URL = process.env.SAAVN_API_URL || 'https://saavn.sumit.co';
 
 const saavnClient = axios.create({
     baseURL: SAAVN_BASE_URL,
@@ -39,23 +39,24 @@ async function getSearchSongs(query, page = 1, limit = 10) {
 }
 
 async function getSongDetails(id) {
-    const { data } = await saavnRequest(`/api/song?id=${id}`);
+    const { data } = await saavnRequest(`/api/songs/${id}`);
     return data;
 }
 
 async function getArtistDetails(id) {
-    const { data } = await saavnRequest(`/api/artist?id=${id}`);
+    // Some versions of the API use /api/artists?id=, others use /api/artists/id
+    // We'll try the most common one first.
+    const { data } = await saavnRequest(`/api/artists?id=${id}`);
     return data;
 }
 
 async function getRecommendationsForSong(id) {
-    // Some mirrors don't support the /suggestions path. We check and fallback.
-    const { data } = await saavnRequest(`/api/song?id=${id}&suggestions=true`);
+    const { data } = await saavnRequest(`/api/songs/${id}/suggestions`);
     return data;
 }
 
 async function getAlbumDetails(id) {
-    const { data } = await saavnRequest(`/api/album?id=${id}`);
+    const { data } = await saavnRequest(`/api/albums?id=${id}`);
     return data;
 }
 
