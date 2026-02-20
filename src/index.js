@@ -1,3 +1,6 @@
+const { File } = require('fetch-blob/file.js');
+global.File = File;
+
 const fastify = require('fastify')({ logger: true });
 require('dotenv').config();
 
