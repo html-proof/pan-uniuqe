@@ -8,11 +8,17 @@ const admin = require('firebase-admin');
 // For now, it will load it conditionally or just from the JSON.
 let serviceAccount = {};
 
-// Parsing from env mapping if on railway
+// 1. Try to load from the JSON file first (if it exists)
+try {
+    serviceAccount = require('./firebase-service-account.json');
+} catch (e) {
+    // No local JSON file, that's fine for production
+}
+
+// 2. Override with FIREBASE_SERVICE_ACCOUNT (JSON or Base64) if it exists
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     let raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
     try {
-        // Remove surrounding quotes if they were added by the hosting provider/UI
         if (raw.startsWith('"') && raw.endsWith('"')) {
             raw = raw.substring(1, raw.length - 1).trim();
         }
@@ -21,79 +27,61 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 
         if (raw && !raw.startsWith('{')) {
             console.log('Detected Base64 encoding, decoding...');
-            try {
-                const decoded = Buffer.from(raw, 'base64').toString('utf-8');
-                serviceAccount = JSON.parse(decoded);
-                console.log('Successfully parsed Base64 JSON');
-            } catch (base64Error) {
-                console.error(`Base64 decode/parse failed: ${base64Error.message}`);
-                // If it looks like base64 but fails, we continue to fallback 
-            }
+            const decoded = Buffer.from(raw, 'base64').toString('utf-8');
+            serviceAccount = JSON.parse(decoded);
+            console.log('Successfully parsed Base64 JSON');
         } else {
-            // AUTO-FIX: Railway sometimes messes up backslashes in JSON env vars
-            // It might turn \n into \\n or \x (corrupted). 
-            try {
-                serviceAccount = JSON.parse(raw);
-                console.log('Successfully parsed raw JSON');
-            } catch (initialError) {
-                console.warn('Initial JSON parse failed, attempting auto-fix for escape characters...');
-                // Try to fix common corruption patterns like \x or bad \n
-                const fixed = raw.replace(/\\x/g, '\\n').replace(/\\([^"\\/bfnrtu])/g, '$1');
-                serviceAccount = JSON.parse(fixed);
-                console.log('Successfully parsed auto-fixed JSON');
-            }
+            serviceAccount = JSON.parse(raw);
+            console.log('Successfully parsed raw JSON');
         }
     } catch (e) {
         console.error('CRITICAL: FIREBASE_SERVICE_ACCOUNT parsing failed:', e.message);
-
-        // Advanced Debugging: Find the problematic character
-        const match = e.message.match(/at position (\d+)/);
-        if (match && raw) {
-            const pos = parseInt(match[1], 10);
-            const start = Math.max(0, pos - 20);
-            const end = Math.min(raw.length, pos + 20);
-            console.error(`Context at error (pos ${pos}): "...${raw.substring(start, end).replace(/\n/g, '\\n')}..."`);
-        }
     }
 }
 
-// Fallback logic if JSON parsing failed or wasn't provided
-if (!serviceAccount || !serviceAccount.privateKey) {
+// 3. Normalize keys (JSON uses snake_case, JS code often uses camelCase)
+if (serviceAccount.project_id) serviceAccount.projectId = serviceAccount.project_id;
+if (serviceAccount.private_key) serviceAccount.privateKey = serviceAccount.private_key;
+if (serviceAccount.client_email) serviceAccount.clientEmail = serviceAccount.client_email;
+
+// 4. Fallback to individual vars if still missing pieces
+if (!serviceAccount.projectId || !serviceAccount.privateKey) {
     console.log('Falling back to individual Firebase environment variables...');
-    serviceAccount = {
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    };
+    if (process.env.FIREBASE_PROJECT_ID) serviceAccount.projectId = process.env.FIREBASE_PROJECT_ID;
+    if (process.env.FIREBASE_CLIENT_EMAIL) serviceAccount.clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    if (process.env.FIREBASE_PRIVATE_KEY) {
+        serviceAccount.privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    }
 }
 
 // Final Validation before initialization
-if (!serviceAccount.projectId || !serviceAccount.privateKey || !serviceAccount.clientEmail) {
-    console.warn('WARNING: Firebase credentials appear incomplete. Ensure FIREBASE_SERVICE_ACCOUNT or individual vars are set correctly.');
-}
+const hasCreds = serviceAccount.projectId && serviceAccount.privateKey && serviceAccount.clientEmail;
 
 let db = null;
 let auth = null;
 
 if (!admin.apps.length) {
     try {
-        if (serviceAccount.projectId && serviceAccount.privateKey) {
+        if (hasCreds) {
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount),
                 databaseURL: process.env.DATABASE_URL || "https://sample-music-65323-default-rtdb.asia-southeast1.firebasedatabase.app"
             });
             console.log('Firebase initialized successfully');
-            db = admin.database();
-            auth = admin.auth();
         } else {
-            console.error('CRITICAL: Cannot initialize Firebase - missing Project ID or Private Key');
+            console.error('CRITICAL: Cannot initialize Firebase - missing credentials (project_id, private_key, or client_email)');
         }
     } catch (initError) {
         console.error('FATAL: Firebase initialization failed:', initError.message);
     }
-} else {
+}
+
+// Export db and auth even if they are null, routes should handle it
+try {
     db = admin.database();
     auth = admin.auth();
+} catch (e) {
+    console.warn('Firebase services unavailable:', e.message);
 }
 
 module.exports = { admin, db, auth };
