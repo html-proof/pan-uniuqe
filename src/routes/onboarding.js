@@ -6,15 +6,21 @@ const LANGUAGE_CACHE_TTL = 86400;
 // 6 Hour Cache for Artists 
 const ARTISTS_CACHE_TTL = 21600;
 
+const DEFAULT_LANGUAGES = ['Hindi', 'English', 'Punjabi', 'Tamil', 'Telugu', 'Malayalam', 'Kannada', 'Bengali', 'Marathi', 'Gujarati'].sort();
+
 async function routes(fastify, options) {
     // 1. Fetch Dynamic Languages
     fastify.get('/languages', async (request, reply) => {
         try {
             // Use trending songs to extract active languages dynamically
             const languages = await getOrSetCache('onboarding:languages', LANGUAGE_CACHE_TTL, async () => {
-                const data = await getSearch('top songs');
+                const searchResponse = await getSearch('top songs');
+
+                // Handle different potential structures from the unofficial API
+                const data = searchResponse.data || searchResponse;
 
                 const extractedLanguages = new Set();
+
 
                 // Crawl through generic search results (albums, songs, playlists) to find embedded languages
                 if (data.results) {
@@ -22,22 +28,26 @@ async function routes(fastify, options) {
                         data.results.songs.data.forEach(song => {
                             if (song.language) extractedLanguages.add(song.language.toLowerCase());
                         });
-                    }
-                    if (data.results.albums && data.results.albums.data) {
-                        data.results.albums.data.forEach(album => {
-                            if (album.language) extractedLanguages.add(album.language.toLowerCase());
+                    } else if (Array.isArray(data.results)) {
+                        // Sometimes results is just a flat array of songs
+                        data.results.forEach(song => {
+                            if (song.language) extractedLanguages.add(song.language.toLowerCase());
                         });
                     }
                 }
 
-                // Format nicely for the frontend: ['Hindi', 'English', ...]
-                return Array.from(extractedLanguages).map(l => l.charAt(0).toUpperCase() + l.slice(1)).sort();
+                const resultLangs = Array.from(extractedLanguages).map(l => l.charAt(0).toUpperCase() + l.slice(1));
+
+                // Merge with fallbacks and deduplicate
+                const finalLangs = Array.from(new Set([...resultLangs, ...DEFAULT_LANGUAGES])).sort();
+                return finalLangs;
             });
 
             return reply.send(languages);
         } catch (error) {
             fastify.log.error(error);
-            return reply.status(500).send({ error: 'Failed to fetch languages' });
+            // Even on error, return defaults so the app works
+            return reply.send(DEFAULT_LANGUAGES);
         }
     });
 
