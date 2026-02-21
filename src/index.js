@@ -1,3 +1,14 @@
+// Node 18 Polyfill for missing File class required by undici v6+
+if (typeof global.File === 'undefined' && typeof Blob !== 'undefined') {
+    global.File = class File extends Blob {
+        constructor(fileBits, fileName, options = {}) {
+            super(fileBits, options);
+            this.name = fileName;
+            this.lastModified = options.lastModified || Date.now();
+        }
+    };
+}
+
 const fastify = require('fastify')({ logger: true });
 require('dotenv').config();
 
