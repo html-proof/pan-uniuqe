@@ -3,7 +3,7 @@ const { getOrSetCache } = require('../services/cache');
 
 async function routes(fastify, options) {
     fastify.get('/', async (request, reply) => {
-        const { q, page = 1, limit = 10 } = request.query;
+        const { q, page = 1, limit = 20 } = request.query;
         if (!q) return reply.code(400).send({ error: 'Query is required' });
 
         try {
@@ -29,7 +29,7 @@ async function routes(fastify, options) {
     });
 
     fastify.get('/songs', async (request, reply) => {
-        const { q, page = 1, limit = 10 } = request.query;
+        const { q, page = 1, limit = 20 } = request.query;
         if (!q) return reply.code(400).send({ error: 'Query is required' });
 
         try {

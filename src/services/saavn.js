@@ -69,7 +69,7 @@ async function saavnRequest(urlPath, retries = 2) {
     return limiter.schedule(() => executeRequest());
 }
 
-async function getSearch(query, page = 1, limit = 10) {
+async function getSearch(query, page = 1, limit = 20) {
     try {
         return await getOrSetCache(`search:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
@@ -83,7 +83,7 @@ async function getSearch(query, page = 1, limit = 10) {
     }
 }
 
-async function getSearchSongs(query, page = 1, limit = 10) {
+async function getSearchSongs(query, page = 1, limit = 20) {
     try {
         return await getOrSetCache(`searchSongs:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
@@ -97,7 +97,7 @@ async function getSearchSongs(query, page = 1, limit = 10) {
     }
 }
 
-async function getSearchAlbums(query, page = 1, limit = 10) {
+async function getSearchAlbums(query, page = 1, limit = 20) {
     try {
         return await getOrSetCache(`searchAlbums:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search/albums?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
