@@ -69,56 +69,102 @@ async function saavnRequest(urlPath, retries = 2) {
     return limiter.schedule(() => executeRequest());
 }
 
-// Basic custom scoring to weigh relevance for search results
-// Exact matches get massive scores, partial string matches get decent scores, irrelevant trailing strings get low scores
-function scoreResult(query, item) {
-    if (!item) return 0;
-    const q = (query || '').toLowerCase().trim();
-    if (!q) return 0;
+const Fuse = require('fuse.js');
 
-    let score = 0;
+// Normalize query to prevent messy inputs from breaking matches
+function normalizeQuery(q) {
+    if (!q) return '';
+    return q
+        .toLowerCase()
+        .replace(/[^\w\s]/g, "") // Remove punctuation
+        .replace(/\s+/g, " ")    // Consolidate spaces
+        .trim();
+}
 
-    // Unescape HTML entities from Saavn
-    const unescapeHtml = (str) => {
-        if (!str) return '';
-        return str.replace(/&quot;/g, '"')
-            .replace(/&amp;/g, '&')
-            .replace(/&#039;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>');
-    };
+// deduplicate results based on name and artist
+function uniqueSongs(list) {
+    const seen = new Set();
+    return list.filter(song => {
+        const key = `${(song.name || song.title || '').toLowerCase()}|${(song.artist || '').toLowerCase()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
 
-    // Clean strings and strip punctuation for purer matching
-    const rawTitle = unescapeHtml(item.name || item.title || '');
-    const title = rawTitle.toLowerCase().trim().replace(/[()[\].,;"']/g, '');
-    const cleanQ = q.replace(/[()[\].,;"']/g, '');
+// Helper for unescaping HTML entities from Saavn
+const unescapeHtml = (str) => {
+    if (!str) return '';
+    return str.replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&#039;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+};
 
-    // Exact headline match
-    if (title === cleanQ) score += 100;
-    else if (title.startsWith(`\${cleanQ} `) || title.startsWith(`\${cleanQ}-`)) score += 50;
-    else if (title.includes(cleanQ)) score += 20;
+// Helper to rank results accurately using Fuse.js
+function rankResults(query, items, isAlbum = false) {
+    if (!items || !items.length) return [];
 
-    // Word boundary matches (e.g. query "money" matches "money heist" better than "moneymaker")
-    const qWords = q.split(/\s+/);
-    const titleWords = title.split(/\s+/);
-    let matchedWords = 0;
-    for (const tw of titleWords) {
-        if (qWords.includes(tw)) matchedWords++;
+    const q = normalizeQuery(query);
+
+    // Pre-clean Saavn items for better Fuse performance
+    const cleanItems = items.map(item => {
+        let artistsStr = '';
+        if (Array.isArray(item.primaryArtists)) {
+            artistsStr = item.primaryArtists.map(a => a.name).join(' ');
+        } else if (typeof item.primaryArtists === 'string') {
+            artistsStr = item.primaryArtists;
+        } else if (item.artist) {
+            artistsStr = item.artist;
+        }
+
+        const name = unescapeHtml(item.name || item.title || '');
+        const artist = unescapeHtml(artistsStr);
+        const albumName = !isAlbum && item.album ? unescapeHtml(item.album.name || item.album.title || (typeof item.album === 'string' ? item.album : '')).trim() : '';
+
+        return {
+            ...item,
+            _cleanName: normalizeQuery(name),
+            _cleanArtist: normalizeQuery(artist),
+            _cleanAlbum: normalizeQuery(albumName)
+        };
+    });
+
+    const fuse = new Fuse(cleanItems, {
+        keys: [
+            { name: '_cleanName', weight: 2.0 },   // Name is highest priority
+            { name: '_cleanArtist', weight: 1.2 }, // Artist is strong priority
+            { name: '_cleanAlbum', weight: 0.8 }   // Album is lower priority
+        ],
+        threshold: 0.35, // Balanced fuzzy tolerance
+        includeScore: true,
+        shouldSort: true,
+        minMatchCharLength: 2
+    });
+
+    // Run the fuzzy search
+    const fuseResults = fuse.search(q);
+
+    // Map back to original items
+    let sortedItems = fuseResults.map(res => {
+        const original = { ...res.item };
+        // Clean up temp properties
+        delete original._cleanName;
+        delete original._cleanArtist;
+        delete original._cleanAlbum;
+        return original;
+    });
+
+    // If no fuzzy matches, fall back to simple substring match on original array to prevent "Missing Results"
+    if (sortedItems.length === 0 && items.length > 0) {
+        sortedItems = items.filter(item => {
+            const name = (item.name || item.title || '').toLowerCase();
+            return name.includes(q) || q.includes(name);
+        });
     }
-    score += (matchedWords * 10);
 
-    // Artist Match Scoring (if string or array)
-    let artistsStr = '';
-    if (Array.isArray(item.primaryArtists)) artistsStr = item.primaryArtists.map(a => a.name).join(' ');
-    else if (typeof item.primaryArtists === 'string') artistsStr = item.primaryArtists;
-    else if (item.artist) artistsStr = item.artist;
-
-    artistsStr = artistsStr.toLowerCase();
-
-    if (artistsStr === q) score += 90;
-    else if (artistsStr.includes(q)) score += 30;
-
-    return score;
+    return isAlbum ? sortedItems : uniqueSongs(sortedItems);
 }
 
 async function getSearch(query, page = 1, limit = 20) {
@@ -140,7 +186,7 @@ async function getSearchSongs(query, page = 1, limit = 20) {
         return await getOrSetCache(`searchSongs:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
             if (data && data.data && Array.isArray(data.data.results)) {
-                data.data.results.sort((a, b) => scoreResult(query, b) - scoreResult(query, a));
+                data.data.results = rankResults(query, data.data.results, false);
             }
             return data;
         }, true);
@@ -157,7 +203,7 @@ async function getSearchAlbums(query, page = 1, limit = 20) {
         return await getOrSetCache(`searchAlbums:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search/albums?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
             if (data && data.data && Array.isArray(data.data.results)) {
-                data.data.results.sort((a, b) => scoreResult(query, b) - scoreResult(query, a));
+                data.data.results = rankResults(query, data.data.results, true);
             }
             return data;
         }, true);
@@ -257,6 +303,35 @@ async function getPlaylistDetails(id) {
     });
 }
 
+const getArtistName = (data) => {
+    if (!data) return 'Unknown Artist';
+    if (typeof data === 'string') return data;
+
+    // Handle Saavn search result structure: { primary: [...], all: [...] }
+    if (typeof data === 'object' && !Array.isArray(data)) {
+        if (Array.isArray(data.primary) && data.primary.length > 0) {
+            return data.primary.map(a => a.name).join(', ');
+        }
+        if (Array.isArray(data.all) && data.all.length > 0) {
+            return data.all.map(a => a.name).join(', ');
+        }
+        return data.name || data.title || 'Unknown Artist';
+    }
+
+    if (Array.isArray(data)) {
+        return data.map(a => (typeof a === 'object' ? a.name : a)).filter(Boolean).join(', ');
+    }
+
+    return String(data);
+};
+
+const getAlbumName = (data) => {
+    if (!data) return 'Unknown Album';
+    if (typeof data === 'string') return data;
+    if (typeof data === 'object') return data.name || data.title || 'Unknown Album';
+    return String(data);
+};
+
 const mapAlbum = (album) => {
     if (!album) return null;
 
@@ -271,7 +346,7 @@ const mapAlbum = (album) => {
     return {
         id: album.id,
         name: album.name || album.title,
-        artist: album.artist || (album.artists && album.artists.primary ? album.artists.primary.map(a => a.name).join(', ') : 'Unknown Artist'),
+        artist: getArtistName(album.artist || album.artists || album.primaryArtists),
         image: imageUrl,
         year: album.year,
         language: album.language,
@@ -282,23 +357,6 @@ const mapAlbum = (album) => {
 
 const mapSong = (song) => {
     if (!song) return null;
-
-    const getArtistName = (data) => {
-        if (!data) return 'Unknown Artist';
-        if (typeof data === 'string') return data;
-        if (Array.isArray(data)) {
-            return data.map(a => (typeof a === 'object' ? a.name : a)).filter(Boolean).join(', ');
-        }
-        if (typeof data === 'object') return data.name || data.title || 'Unknown Artist';
-        return String(data);
-    };
-
-    const getAlbumName = (data) => {
-        if (!data) return 'Unknown Album';
-        if (typeof data === 'string') return data;
-        if (typeof data === 'object') return data.name || data.title || 'Unknown Album';
-        return String(data);
-    };
 
     // Extract all useful qualities (96, 160, 320) so the client can optimize data usage
     let streams = { low: '', medium: '', high: '' };
