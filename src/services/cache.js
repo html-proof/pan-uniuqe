@@ -37,24 +37,28 @@ async function getOrSetCache(key, ttl, fetchFunction, useFirebase = false) {
         }
 
         const freshData = await fetchFunction();
-        // Don't cache empty results or errors
+        // Don't cache errors 
         if (freshData && !freshData._isFallback) {
             cache.set(key, freshData, ttl);
 
             if (useFirebase && db) {
-                // Only cache in Firebase if there are valid results
-                const hasResults = Array.isArray(freshData.results) ? freshData.results.length > 0 : true;
-                if (hasResults) {
-                    try {
-                        const sanitizedKey = key.replace(/[.$#\[\]\/]/g, '_');
-                        db.ref(`search_cache/${sanitizedKey}`).set({
-                            payload: freshData,
-                            expiresAt: Date.now() + (ttl * 1000)
-                        }).catch(e => console.error('[Cache DB Write Error]', e.message));
-                        console.log(`[Cache DB MISS] Stored ${key} into Firebase RTDB`);
-                    } catch (err) {
-                        console.error('[Cache DB Error] Failed to write to Firebase:', err.message);
-                    }
+                // Determine if we have actual items or Empty Arrays
+                const hasResults = Array.isArray(freshData.results) ? freshData.results.length > 0
+                    : (Array.isArray(freshData.songs) && Array.isArray(freshData.albums)) ? (freshData.songs.length > 0 || freshData.albums.length > 0)
+                        : true;
+
+                // The user explicitly requested to save empty results to Firebase too
+                // to prevent hammering Saavn for known dead queries
+                try {
+                    const sanitizedKey = key.replace(/[.$#\[\]\/]/g, '_');
+                    db.ref(`search_cache/${sanitizedKey}`).set({
+                        payload: freshData,
+                        expiresAt: Date.now() + (ttl * 1000),
+                        hasResults: hasResults
+                    }).catch(e => console.error('[Cache DB Write Error]', e.message));
+                    console.log(`[Cache DB MISS] Stored ${key} into Firebase RTDB (hasResults: ${hasResults})`);
+                } catch (err) {
+                    console.error('[Cache DB Error] Failed to write to Firebase:', err.message);
                 }
             }
         }
