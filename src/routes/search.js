@@ -1,4 +1,4 @@
-const { getSearch, getSearchSongs, mapSong } = require('../services/saavn');
+const { getSearch, getSearchSongs, getSearchAlbums, mapSong } = require('../services/saavn');
 const { getOrSetCache } = require('../services/cache');
 
 async function routes(fastify, options) {
@@ -8,12 +8,14 @@ async function routes(fastify, options) {
 
         try {
             return await getOrSetCache(`search:all:${q}:${page}:${limit}`, 300, async () => {
-                const data = await getSearch(q, page, limit);
-                const results = data?.data || data;
+                const [songsData, albumsData] = await Promise.all([
+                    getSearchSongs(q, page, limit),
+                    getSearchAlbums(q, page, limit)
+                ]);
 
                 return {
-                    songs: results?.songs?.results?.map(mapSong) || [],
-                    albums: results?.albums?.results?.map(album => ({
+                    songs: songsData?.data?.results?.map(mapSong) || [],
+                    albums: albumsData?.data?.results?.map(album => ({
                         id: album.id,
                         name: album.title,
                         artist: album.artist,
