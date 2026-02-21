@@ -69,6 +69,58 @@ async function saavnRequest(urlPath, retries = 2) {
     return limiter.schedule(() => executeRequest());
 }
 
+// Basic custom scoring to weigh relevance for search results
+// Exact matches get massive scores, partial string matches get decent scores, irrelevant trailing strings get low scores
+function scoreResult(query, item) {
+    if (!item) return 0;
+    const q = (query || '').toLowerCase().trim();
+    if (!q) return 0;
+
+    let score = 0;
+
+    // Unescape HTML entities from Saavn
+    const unescapeHtml = (str) => {
+        if (!str) return '';
+        return str.replace(/&quot;/g, '"')
+            .replace(/&amp;/g, '&')
+            .replace(/&#039;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>');
+    };
+
+    // Clean strings and strip punctuation for purer matching
+    const rawTitle = unescapeHtml(item.name || item.title || '');
+    const title = rawTitle.toLowerCase().trim().replace(/[()[\].,;"']/g, '');
+    const cleanQ = q.replace(/[()[\].,;"']/g, '');
+
+    // Exact headline match
+    if (title === cleanQ) score += 100;
+    else if (title.startsWith(`\${cleanQ} `) || title.startsWith(`\${cleanQ}-`)) score += 50;
+    else if (title.includes(cleanQ)) score += 20;
+
+    // Word boundary matches (e.g. query "money" matches "money heist" better than "moneymaker")
+    const qWords = q.split(/\s+/);
+    const titleWords = title.split(/\s+/);
+    let matchedWords = 0;
+    for (const tw of titleWords) {
+        if (qWords.includes(tw)) matchedWords++;
+    }
+    score += (matchedWords * 10);
+
+    // Artist Match Scoring (if string or array)
+    let artistsStr = '';
+    if (Array.isArray(item.primaryArtists)) artistsStr = item.primaryArtists.map(a => a.name).join(' ');
+    else if (typeof item.primaryArtists === 'string') artistsStr = item.primaryArtists;
+    else if (item.artist) artistsStr = item.artist;
+
+    artistsStr = artistsStr.toLowerCase();
+
+    if (artistsStr === q) score += 90;
+    else if (artistsStr.includes(q)) score += 30;
+
+    return score;
+}
+
 async function getSearch(query, page = 1, limit = 20) {
     try {
         return await getOrSetCache(`search:${query}:${page}:${limit}`, 600, async () => {
@@ -87,6 +139,9 @@ async function getSearchSongs(query, page = 1, limit = 20) {
     try {
         return await getOrSetCache(`searchSongs:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search/songs?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+            if (data && data.data && Array.isArray(data.data.results)) {
+                data.data.results.sort((a, b) => scoreResult(query, b) - scoreResult(query, a));
+            }
             return data;
         }, true);
     } catch (e) {
@@ -101,6 +156,9 @@ async function getSearchAlbums(query, page = 1, limit = 20) {
     try {
         return await getOrSetCache(`searchAlbums:${query}:${page}:${limit}`, 600, async () => {
             const { data } = await saavnRequest(`/api/search/albums?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+            if (data && data.data && Array.isArray(data.data.results)) {
+                data.data.results.sort((a, b) => scoreResult(query, b) - scoreResult(query, a));
+            }
             return data;
         }, true);
     } catch (e) {
