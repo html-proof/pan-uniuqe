@@ -49,6 +49,11 @@ async function getOrSetCache(key, ttl, fetchFunction, useFirebase = false) {
 
                 // The user explicitly requested to save empty results to Firebase too
                 // to prevent hammering Saavn for known dead queries
+                // determine the raw search query (removing the "search:all:" prefixes)
+                const queryParts = key.split(':');
+                const rawQuery = queryParts.length >= 3 ? queryParts[2] : key;
+                const sanitizedQuery = rawQuery.replace(/[.$#\[\]\/]/g, '_');
+
                 try {
                     const sanitizedKey = key.replace(/[.$#\[\]\/]/g, '_');
                     db.ref(`search_cache/${sanitizedKey}`).set({
@@ -57,6 +62,23 @@ async function getOrSetCache(key, ttl, fetchFunction, useFirebase = false) {
                         hasResults: hasResults
                     }).catch(e => console.error('[Cache DB Write Error]', e.message));
                     console.log(`[Cache DB MISS] Stored ${key} into Firebase RTDB (hasResults: ${hasResults})`);
+
+                    // If no results, track this missing query for the admin
+                    if (!hasResults && key.startsWith('search:all:')) {
+                        const missingRef = db.ref(`missing_searches/${sanitizedQuery}`);
+                        missingRef.once('value').then(snap => {
+                            let count = 1;
+                            if (snap.exists()) {
+                                count = (snap.val().count || 0) + 1;
+                            }
+                            missingRef.set({
+                                query: rawQuery,
+                                count: count,
+                                lastRequested: Date.now(),
+                                adminAttention: count >= 2
+                            });
+                        }).catch(e => console.error('[Missing DB Write Error]', e.message));
+                    }
                 } catch (err) {
                     console.error('[Cache DB Error] Failed to write to Firebase:', err.message);
                 }
